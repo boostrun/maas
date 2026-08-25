@@ -1,0 +1,36 @@
+name: build-snap
+
+on:
+  push:
+    branches: [3.7.2-SRE-31-simplestreams]
+  workflow_dispatch:
+
+concurrency:
+  group: build-snap
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: large-runner
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup LXD
+        uses: canonical/setup-lxd@8c6a87bfb56aa48f3fb9b830baa18562d8bfd4ee # v1
+
+      - name: Install snapcraft
+        run: sudo snap install snapcraft --classic
+
+      - name: Build snap
+        run: |
+          export SNAPCRAFT_BUILD_INFO=1
+          sg adm -c 'snapcraft -v'
+
+      - name: Upload snap artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: maas-snap
+          path: "*.snap"
+          retention-days: 7
