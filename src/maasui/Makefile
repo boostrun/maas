@@ -29,7 +29,7 @@ clean: clean-build
 # fetch prebuilt UI
 
 fetch-build:
-	curl -sfL https://assets.ubuntu.com/v1/$(TARBALL_NAME) | tar --recursive-unlink --one-top-level=build --extract -z
+	curl -sfL https://assets.ubuntu.com/v1/$(TARBALL_NAME) | tar --one-top-level=build --extract -z
 .PHONY: fetch-build
 
 # build UI locally
@@ -37,12 +37,18 @@ fetch-build:
 build-local: $(BUILD_DIR)/index.html
 .PHONY: build-local
 
-$(NODEJS_BIN)/node:
-	curl -sfL https://nodejs.org/dist/v$(NODEJS_VERSION)/node-v$(NODEJS_VERSION)-linux-x64.tar.xz | tar --recursive-unlink --one-top-level=$(NODEJS_DIR) --strip-components=1 --extract -J
+$(NODEJS_BIN)/node: | $(NODEJS_DIR)
+	tmp=$$(mktemp -d) && \
+	curl -sfL https://nodejs.org/dist/v$(NODEJS_VERSION)/node-v$(NODEJS_VERSION)-linux-x64.tar.xz | tar -C "$$tmp" --strip-components=1 --extract -J && \
+	cp -a "$$tmp/." $(NODEJS_DIR)/ && \
+	rm -rf "$$tmp"
 	@touch --no-create $@
 
 $(NODEJS_BIN)/yarn: $(NODEJS_BIN)/node
-	curl -sfL https://github.com/yarnpkg/yarn/releases/download/v$(YARN_VERSION)/yarn-v$(YARN_VERSION).tar.gz | tar --one-top-level=$(NODEJS_DIR) --strip-components=1 --extract -z
+	tmp=$$(mktemp -d) && \
+	curl -sfL https://github.com/yarnpkg/yarn/releases/download/v$(YARN_VERSION)/yarn-v$(YARN_VERSION).tar.gz | tar -C "$$tmp" --strip-components=1 --extract -z && \
+	cp -a "$$tmp/." $(NODEJS_DIR)/ && \
+	rm -rf "$$tmp"
 	@touch --no-create $@
 
 $(SRC_DIR)/yarn.lock:
