@@ -1,0 +1,16 @@
+name: Check Jira Issue Status
+
+on:
+  pull_request:
+    types: [opened, reopened, edited, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  call-reusable-workflow:
+    uses: boostrun/br-central-workflows/.github/workflows/check-jira-issue-status-workflow.yml@main
+    secrets:
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
