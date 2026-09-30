@@ -56,6 +56,11 @@ MAX_STATUS_REQUEST_RETRIES = 7
 
 MAX_REDIRECTS = 5
 
+REDFISH_PXE_OVERRIDE_FAILURE_CHOICES = [
+    ["fail", "Fail the power action"],
+    ["ignore", "Log a warning and continue with the power action"],
+]
+
 
 class PowerChange(str, Enum):
     OFF = "ForceOff"
@@ -286,6 +291,13 @@ class RedfishPowerDriver(RedfishPowerDriverBase):
             secret=True,
         ),
         make_setting_field("node_id", "Node ID", scope=SETTING_SCOPE.NODE),
+        make_setting_field(
+            "pxe_override_failure",
+            "Behavior when the PXE boot override fails",
+            field_type="choice",
+            choices=REDFISH_PXE_OVERRIDE_FAILURE_CHOICES,
+            default="fail",
+        ),
     ]
     ip_extractor = make_ip_extractor("power_address")
 
@@ -371,8 +383,13 @@ class RedfishPowerDriver(RedfishPowerDriverBase):
         return system_endpoint
 
     @inlineCallbacks
-    def set_pxe_boot(self, url, node_id, headers):
-        """Set the machine with node_id to PXE boot."""
+    def set_pxe_boot(self, url, node_id, headers, pxe_override_failure=None):
+        """Set the machine with node_id to PXE boot.
+
+        Some BMCs expose the boot override as read-only; when
+        pxe_override_failure is "ignore", a failed PATCH is logged
+        and the power action continues.
+        """
 
         def _get_bodyProducer():
             return FileBodyProducer(
@@ -400,13 +417,26 @@ class RedfishPowerDriver(RedfishPowerDriverBase):
             return result
 
         # 3. Perform the PATCH operation
-        yield self.redfish_request(
-            b"PATCH",
-            join(url, target_endpoint),
-            headers,
-            _get_bodyProducer,
-            _get_target_etag,
-        )
+        try:
+            yield self.redfish_request(
+                b"PATCH",
+                join(url, target_endpoint),
+                headers,
+                _get_bodyProducer,
+                _get_target_etag,
+            )
+        except PowerActionError:
+            # Some BMCs (e.g. AMI MegaRAC) expose the boot override as
+            # read-only and reject the PATCH. When configured to ignore
+            # the failure, rely on the machine's boot order to PXE.
+            if pxe_override_failure != "ignore":
+                raise
+            maaslog.warning(
+                "Unable to set the PXE boot override for the Redfish"
+                " node '%s'. Continuing with the power action; the"
+                " machine must PXE from its boot order.",
+                node_id.decode("utf-8"),
+            )
 
     @inlineCallbacks
     def power(self, power_change: PowerChange, url, node_id, headers):
@@ -440,7 +470,9 @@ class RedfishPowerDriver(RedfishPowerDriverBase):
         if power_state == POWER_STATE.ON:
             yield self.power(PowerChange.OFF, url, node_id, headers)
         # Set to PXE boot.
-        yield self.set_pxe_boot(url, node_id, headers)
+        yield self.set_pxe_boot(
+            url, node_id, headers, context.get("pxe_override_failure")
+        )
         # Power on the machine.
         yield self.power(PowerChange.ON, url, node_id, headers)
 
@@ -454,7 +486,9 @@ class RedfishPowerDriver(RedfishPowerDriverBase):
         if power_state != POWER_STATE.OFF:
             yield self.power(PowerChange.OFF, url, node_id, headers)
         # Set to PXE boot.
-        yield self.set_pxe_boot(url, node_id, headers)
+        yield self.set_pxe_boot(
+            url, node_id, headers, context.get("pxe_override_failure")
+        )
 
     @asynchronous
     @inlineCallbacks
@@ -531,7 +565,9 @@ class RedfishPowerDriver(RedfishPowerDriverBase):
     def power_reset(self, system_id, context):
         """Power reset machine."""
         url, node_id, headers = yield self.process_redfish_context(context)
-        yield self.set_pxe_boot(url, node_id, headers)
+        yield self.set_pxe_boot(
+            url, node_id, headers, context.get("pxe_override_failure")
+        )
         yield self.power(PowerChange.RESET, url, node_id, headers)
 
     @inlineCallbacks
