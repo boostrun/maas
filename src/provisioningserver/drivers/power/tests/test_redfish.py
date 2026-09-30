@@ -1013,6 +1013,82 @@ class TestRedfishPowerDriver(MAASTestCase):
         )
 
     @inlineCallbacks
+    def test_set_pxe_boot_patch_failure_raises_when_not_ignored(self):
+        driver = RedfishPowerDriver()
+        context = make_context()
+        url = driver.get_url(context)
+        node_id = b"1"
+        headers = driver.make_auth_headers(**context)
+        self.patch(
+            driver, "get_boot_endpoint"
+        ).return_value = b"redfish/v1/Systems/1"
+        mock_redfish_request = self.patch(driver, "redfish_request")
+        mock_redfish_request.side_effect = PowerActionError("BOOM")
+
+        for pxe_override_failure in [None, "", "fail"]:
+            with self.assertRaises(PowerActionError):
+                yield driver.set_pxe_boot(
+                    url, node_id, headers, pxe_override_failure
+                )
+
+    @inlineCallbacks
+    def test_set_pxe_boot_patch_failure_ignored(self):
+        driver = RedfishPowerDriver()
+        context = make_context()
+        url = driver.get_url(context)
+        node_id = b"1"
+        headers = driver.make_auth_headers(**context)
+        self.patch(
+            driver, "get_boot_endpoint"
+        ).return_value = b"redfish/v1/Systems/1"
+        mock_redfish_request = self.patch(driver, "redfish_request")
+        mock_redfish_request.side_effect = PowerActionError("BOOM")
+        mock_maaslog = self.patch(redfish_module, "maaslog")
+
+        yield driver.set_pxe_boot(url, node_id, headers, "ignore")
+
+        mock_maaslog.warning.assert_called_once_with(
+            "Unable to set the PXE boot override for the Redfish"
+            " node '%s'. Continuing with the power action; the"
+            " machine must PXE from its boot order.",
+            "1",
+        )
+
+    @inlineCallbacks
+    def test_set_pxe_boot_auth_error_is_always_fatal(self):
+        driver = RedfishPowerDriver()
+        context = make_context()
+        url = driver.get_url(context)
+        node_id = b"1"
+        headers = driver.make_auth_headers(**context)
+        self.patch(
+            driver, "get_boot_endpoint"
+        ).return_value = b"redfish/v1/Systems/1"
+        mock_redfish_request = self.patch(driver, "redfish_request")
+        mock_redfish_request.side_effect = PowerAuthError("denied")
+
+        with self.assertRaises(PowerAuthError):
+            yield driver.set_pxe_boot(url, node_id, headers, "ignore")
+
+    @inlineCallbacks
+    def test_set_pxe_boot_connection_error_is_fatal_when_ignored(self):
+        driver = RedfishPowerDriver()
+        context = make_context()
+        url = driver.get_url(context)
+        node_id = b"1"
+        headers = driver.make_auth_headers(**context)
+        self.patch(
+            driver, "get_boot_endpoint"
+        ).return_value = b"redfish/v1/Systems/1"
+        mock_redfish_request = self.patch(driver, "redfish_request")
+        # Connection-level failures are not PowerActionError; they must
+        # not be swallowed by pxe_override_failure=ignore.
+        mock_redfish_request.side_effect = ResponseFailed("connection lost")
+
+        with self.assertRaises(ResponseFailed):
+            yield driver.set_pxe_boot(url, node_id, headers, "ignore")
+
+    @inlineCallbacks
     def test_redfish_request_retry_refreshed_etag(self):
         driver = RedfishPowerDriver()
         context = make_context()
@@ -1116,7 +1192,7 @@ class TestRedfishPowerDriver(MAASTestCase):
         mock_power = self.patch(driver, "power")
 
         yield driver.power_on(node_id, context)
-        mock_set_pxe_boot.assert_called_once_with(url, node_id, headers)
+        mock_set_pxe_boot.assert_called_once_with(url, node_id, headers, None)
         mock_power_query.assert_called_once_with(url, node_id, headers)
         mock_power.assert_has_calls(
             [
@@ -1124,6 +1200,27 @@ class TestRedfishPowerDriver(MAASTestCase):
                 call("On", url, node_id, headers),
             ],
         )
+
+    @inlineCallbacks
+    def test_power_on_passes_pxe_override_failure(self):
+        driver = RedfishPowerDriver()
+        context = make_context()
+        context["pxe_override_failure"] = "ignore"
+        url = driver.get_url(context)
+        headers = driver.make_auth_headers(**context)
+        node_id = b"1"
+        mock_redfish_request = self.patch(driver, "redfish_request")
+        mock_redfish_request.return_value = (SAMPLE_JSON_SYSTEMS, None)
+        mock_set_pxe_boot = self.patch(driver, "set_pxe_boot")
+        mock_power_query = self.patch(driver, "_power_query")
+        mock_power_query.return_value = "off"
+        mock_power = self.patch(driver, "power")
+
+        yield driver.power_on(node_id, context)
+        mock_set_pxe_boot.assert_called_once_with(
+            url, node_id, headers, "ignore"
+        )
+        mock_power.assert_called_once_with("On", url, node_id, headers)
 
     @inlineCallbacks
     def test_power_off(self):
@@ -1140,7 +1237,7 @@ class TestRedfishPowerDriver(MAASTestCase):
         mock_power = self.patch(driver, "power")
 
         yield driver.power_off(node_id, context)
-        mock_set_pxe_boot.assert_called_once_with(url, node_id, headers)
+        mock_set_pxe_boot.assert_called_once_with(url, node_id, headers, None)
         mock_power.assert_called_once_with("ForceOff", url, node_id, headers)
 
     @inlineCallbacks
@@ -1158,7 +1255,7 @@ class TestRedfishPowerDriver(MAASTestCase):
         mock_power = self.patch(driver, "power")
 
         yield driver.power_off(node_id, context)
-        mock_set_pxe_boot.assert_called_once_with(url, node_id, headers)
+        mock_set_pxe_boot.assert_called_once_with(url, node_id, headers, None)
         mock_power.assert_not_called()
 
     @inlineCallbacks
@@ -1248,7 +1345,7 @@ class TestRedfishPowerDriver(MAASTestCase):
         mock_power = self.patch(driver, "power")
 
         yield driver.power_reset(node_id, context)
-        mock_set_pxe_boot.assert_called_once_with(url, node_id, headers)
+        mock_set_pxe_boot.assert_called_once_with(url, node_id, headers, None)
         mock_redfish_context.assert_called_with(context)
         mock_power.assert_called_once_with(
             "GracefulRestart", url, node_id, headers

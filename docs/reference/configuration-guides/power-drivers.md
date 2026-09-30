@@ -148,12 +148,16 @@ Manual power configuration means exactly that -- manually configured at the unit
 
 ### Redfish
 
-| Form field | Description | Required |
-|:-----|:-----|:-----|
-| Redfish address | IP address of unit | Required |
-| Redfish user | Username to login | Required |
-| Redfish password | Password to access unit | Required |
-| Node ID | Node ID | Optional |
+Some of the fields for this power type have fixed choices, indicated in the "Choices" column.
+
+| Form field | Description | Choices | Required |
+|:-----|:-----|:-----|:-----|
+| Redfish address | IP address of unit || Required |
+| Redfish user | Username to login || Required |
+| Redfish password | Password to access unit || Required |
+| Node ID | Node ID || Optional |
+| Behavior when the PXE boot override fails | What to do when the BMC rejects the one-time PXE boot override | Fail the power action | Optional |
+|  |  | Log a warning and continue with the power action | |
 
 ### SeaMicro 15000
 
@@ -414,13 +418,17 @@ All parameters are entered as `key=value`, e.g., `power_type=recs_box`. The MAAS
 
 All parameters are entered as `key=value`, e.g., `power_type=redfish`. The MAAS CLI will refuse the request with informative errors if required parameters are excluded.
 
-| Parameter | Description | Required |
-|:-----|:-----|:-----|
-| `power_type | `redfish` | Required |
-| `power_address` | IP address of unit | Required |
-| `power_user` | Username to login | Required |
-| `power_pass` | Password to access unit | Required |
-| `node_id` | Node ID | Optional |
+Some of the fields for this power type have fixed choices, indicated in the "Choices" column.
+
+| Parameter | Description | Choices | Required |
+|:-----|:-----|:-----|:-----|
+| `power_type | `redfish` | | Required |
+| `power_address` | IP address of unit | | Required |
+| `power_user` | Username to login | | Required |
+| `power_pass` | Password to access unit | | Required |
+| `node_id` | Node ID | | Optional |
+| `pxe_override_failure` | What to do when the BMC rejects the one-time PXE boot override | `fail` | Optional |
+|  |  | `ignore` | |
 
 ### SeaMicro 15000
 
