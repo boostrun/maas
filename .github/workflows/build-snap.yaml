@@ -2,7 +2,7 @@ name: build-snap
 
 on:
   push:
-    branches: [3.7.2-SRE-31-simplestreams]
+    branches: [3.7.2-SRE-95-disable-multipath]
   workflow_dispatch:
 
 concurrency:
