@@ -39,6 +39,7 @@ from maasserver.preseed import (
     compose_curtin_kernel_crash_dump_config,
     compose_curtin_kernel_preseed,
     compose_curtin_maas_reporter,
+    compose_curtin_multipath_config,
     compose_curtin_swap_preseed,
     compose_curtin_verbose_preseed,
     compose_enlistment_preseed_url,
@@ -1187,6 +1188,36 @@ class TestComposeCurtinKernelCrashDump(MAASServerTestCase):
             {"kernel-crash-dumps": {"enabled": False}},
             yaml.safe_load(compose_curtin_kernel_crash_dump_config(node)[0]),
         )
+
+
+class TestComposeCurtinMultipath(MAASServerTestCase):
+    def test_disables_multipath(self):
+        # The legacy multipath detection in the curtin shipped with the
+        # ephemeral images reports IMSM/RAID devices as multipath
+        # (LP: #2094979) and then crashes. This fleet boots from local
+        # storage only, so multipath handling is never needed.
+        self.assertEqual(
+            {"multipath": {"mode": "disabled"}},
+            yaml.safe_load(compose_curtin_multipath_config()[0]),
+        )
+
+
+class TestGetCurtinYamlConfigIncludesMultipath(MAASServerTestCase):
+    def test_multipath_config_is_included(self):
+        node = factory.make_Node()
+        for name in (
+            "get_curtin_config",
+            "compose_curtin_archive_config",
+            "compose_curtin_cloud_config",
+            "compose_curtin_maas_reporter",
+            "compose_curtin_swap_preseed",
+            "compose_curtin_kernel_preseed",
+            "compose_curtin_network_config",
+            "compose_curtin_storage_preseed",
+        ):
+            self.patch(preseed_module, name).return_value = []
+        docs = preseed_module.get_curtin_yaml_config(sentinel.request, node)
+        self.assertIn(yaml.safe_dump({"multipath": {"mode": "disabled"}}), docs)
 
 
 class TestGetNetworkYAMLSettings(MAASServerTestCase):
