@@ -348,6 +348,15 @@ def compose_curtin_kernel_crash_dump_config(node):
     ]
 
 
+def compose_curtin_multipath_config():
+    # The legacy multipath detection in the curtin shipped with the
+    # ephemeral images reports IMSM/RAID devices as multipath
+    # (LP: #2094979) and then crashes in get_mpath_id_from_device.
+    # Machines that boot from local storage have no multipath paths,
+    # so multipath handling is never needed and the probing is skipped.
+    return [yaml.safe_dump({"multipath": {"mode": "disabled"}})]
+
+
 def get_curtin_yaml_config(request, node):
     """Return the curtin configration for the node."""
     osystem, series = get_base_osystem_series(node)
@@ -366,6 +375,7 @@ def get_curtin_yaml_config(request, node):
     )
     storage_config = compose_curtin_storage_preseed(node, osystem)
     crash_dumps_config = compose_curtin_kernel_crash_dump_config(node)
+    multipath_config = compose_curtin_multipath_config()
 
     if osystem not in ["ubuntu", "ubuntu-core", "centos", "rhel", "windows"]:
         maaslog.warning(
@@ -385,6 +395,7 @@ def get_curtin_yaml_config(request, node):
         + verbose_config
         + cloud_config
         + crash_dumps_config
+        + multipath_config
         + [main_config]
     )
 
